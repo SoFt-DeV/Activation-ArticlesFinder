@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activation Article Finder</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1d2330; --muted: #5b6475; --line: #d9dde5;
+    --accent: #0b6bcb; --accent-text: #ffffff; --ok: #1f7a3a; --error: #b3261e; --field: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e3542;
+      --accent: #4a9eff; --accent-text: #0b1220; --ok: #5fcf83; --error: #ff8a80; --field: #11151c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151b; --card: #1b2029; --text: #e6e9ef; --muted: #9aa3b2; --line: #2e3542;
+    --accent: #4a9eff; --accent-text: #0b1220; --ok: #5fcf83; --error: #ff8a80; --field: #11151c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.35rem; margin: 4px 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  p.lead { color: var(--muted); margin: 0 0 18px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; font-size: .95rem; }
+  input, textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--text); font: inherit; }
+  textarea { min-height: 96px; font-family: ui-monospace, Consolas, monospace; font-size: .8rem; word-break: break-all; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { appearance: none; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); padding: 10px 14px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: .88rem; margin: 6px 0 0; }
+  .msg { margin-top: 10px; font-size: .92rem; min-height: 1.2em; }
+  .msg.ok { color: var(--ok); } .msg.error { color: var(--error); }
+  .key { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; word-break: break-all; background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0; font-size: .95rem; }
+  .facts dt { color: var(--muted); } .facts dd { margin: 0; font-weight: 600; word-break: break-word; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Activation Article Finder</h1>
+  <p class="lead">Créez une licence pour un poste à partir de sa demande d'activation. Votre clé privée reste sur cet appareil, chiffrée par votre mot de passe.</p>
+
+  <div id="unsupported" class="msg error" hidden>Ce navigateur bloque la cryptographie sur cette page. Sur un téléphone, ouvrez-la depuis son adresse https:// (pas comme fichier téléchargé). Sur un ordinateur, Chrome, Edge, Firefox ou Safari récents l'acceptent aussi comme fichier.</div>
+
+  <!-- Aucune clé sur cet appareil -->
+  <section id="setup" hidden>
+    <h2>1. Mes clés</h2>
+    <p class="hint">À faire une seule fois. Gardez la sauvegarde téléchargée et le mot de passe : sans eux, vous ne pourrez plus activer de nouveaux postes.</p>
+    <label for="newPass">Mot de passe (12 caractères minimum)</label>
+    <input id="newPass" type="password" autocomplete="new-password">
+    <label for="newPass2">Confirmer le mot de passe</label>
+    <input id="newPass2" type="password" autocomplete="new-password">
+    <div class="row"><button id="createBtn">Créer mes clés</button></div>
+    <label for="backupFile">… ou reprendre une sauvegarde existante</label>
+    <input id="backupFile" type="file" accept=".json,application/json">
+    <div id="setupMsg" class="msg"></div>
+  </section>
+
+  <!-- Clés présentes mais verrouillées -->
+  <section id="locked" hidden>
+    <h2>1. Déverrouiller mes clés</h2>
+    <label for="pass">Mot de passe</label>
+    <input id="pass" type="password" autocomplete="current-password">
+    <div class="row">
+      <button id="unlockBtn">Déverrouiller</button>
+      <button id="forgetBtn" class="secondary">Oublier les clés de cet appareil</button>
+    </div>
+    <div id="lockedMsg" class="msg"></div>
+  </section>
+
+  <!-- Clés déverrouillées -->
+  <section id="keys" hidden>
+    <h2>1. Mes clés</h2>
+    <p class="hint">Clés déverrouillées jusqu'à la fermeture de la page.</p>
+    <label>Ma clé publique (à intégrer dans l'application, elle n'est pas secrète)</label>
+    <div id="publicKey" class="key"></div>
+    <div class="row">
+      <button id="copyPublicBtn" class="secondary">Copier la clé publique</button>
+      <button id="backupBtn" class="secondary">Télécharger la sauvegarde</button>
+    </div>
+    <div id="keysMsg" class="msg"></div>
+  </section>
+
+  <section id="activate" hidden>
+    <h2>2. Activer un poste</h2>
+    <label for="request">Demande d'activation reçue</label>
+    <textarea id="request" placeholder="AFDEMANDE1.…"></textarea>
+    <input id="requestFile" type="file" accept=".txt,text/plain" style="margin-top:8px">
+    <label for="client">Nom du client (facultatif)</label>
+    <input id="client" type="text" autocomplete="off">
+    <div class="row"><button id="licenseBtn">Créer la licence</button></div>
+    <div id="activateMsg" class="msg"></div>
+
+    <div id="result" hidden>
+      <dl class="facts">
+        <dt>Poste</dt><dd id="resPoste"></dd>
+        <dt>Empreinte</dt><dd id="resEmpreinte"></dd>
+      </dl>
+      <p class="hint">Vérifiez que l'empreinte est la même que celle affichée sur le poste.</p>
+      <label for="license">Licence</label>
+      <textarea id="license" readonly></textarea>
+      <div class="row">
+        <button id="shareBtn">Partager le fichier</button>
+        <button id="downloadBtn" class="secondary">Télécharger</button>
+        <button id="copyLicenseBtn" class="secondary">Copier le texte</button>
+      </div>
+      <div id="resultMsg" class="msg"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+// Doivent rester identiques à ceux de activation.py
+const REQUEST_PREFIX = "AFDEMANDE1.";
+const LICENSE_PREFIX = "AFLICENCE1.";
+const HKDF_SALT = "ArticlesFinder-v1";
+const HKDF_INFO = "cle-donnees";
+const STORAGE_KEY = "articles-finder-cles";
+const BACKUP_FORMAT = "articles-finder-cles";
+const PBKDF2_ITERATIONS = 600000;
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+const subtle = window.crypto && window.crypto.subtle;
+
+function b64u(bytes) {
+  let binary = "";
+  new Uint8Array(bytes).forEach(b => { binary += String.fromCharCode(b); });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function fromB64u(text) {
+  const clean = text.replace(/\s+/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(clean + "=".repeat((4 - clean.length % 4) % 4));
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
+}
+function base32(bytes) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0, value = 0, out = "";
+  for (const byte of new Uint8Array(bytes)) {
+    value = (value << 8) | byte; bits += 8;
+    while (bits >= 5) { out += alphabet[(value >>> (bits - 5)) & 31]; bits -= 5; }
+  }
+  if (bits > 0) out += alphabet[(value << (5 - bits)) & 31];
+  return out;
+}
+async function fingerprint(publicBytes) {
+  const code = base32(await subtle.digest("SHA-256", publicBytes)).slice(0, 12);
+  return code.match(/.{4}/g).join("-");
+}
+
+// --- Clés du propriétaire : clé de signature (ECDSA P-256) et clé des données (AES-256)
+async function passwordKey(password, salt, iterations) {
+  const base = await subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, base,
+                          { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function sealBackup(secrets, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await passwordKey(password, salt, PBKDF2_ITERATIONS);
+  const sealed = await subtle.encrypt({ name: "AES-GCM", iv }, key, encoder.encode(JSON.stringify(secrets)));
+  return { format: BACKUP_FORMAT, v: 1, publique: secrets.publique, iterations: PBKDF2_ITERATIONS,
+           sel: b64u(salt), iv: b64u(iv), secrets: b64u(sealed) };
+}
+async function openBackup(backup, password) {
+  if (!backup || backup.format !== BACKUP_FORMAT) throw new Error("Ce fichier n'est pas une sauvegarde de clés Article Finder.");
+  const key = await passwordKey(password, fromB64u(backup.sel), backup.iterations);
+  let plain;
+  try {
+    plain = await subtle.decrypt({ name: "AES-GCM", iv: fromB64u(backup.iv) }, key, fromB64u(backup.secrets));
+  } catch (e) {
+    throw new Error("Mot de passe incorrect.");
+  }
+  return JSON.parse(decoder.decode(plain));
+}
+async function createKeys(password) {
+  const signing = await subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const secrets = {
+    signature: b64u(await subtle.exportKey("pkcs8", signing.privateKey)),
+    donnees: b64u(crypto.getRandomValues(new Uint8Array(32))),
+    publique: b64u(await subtle.exportKey("raw", signing.publicKey)),
+  };
+  return { secrets, backup: await sealBackup(secrets, password) };
+}
+
+// --- Licence : la clé des données est chiffrée pour la clé publique du poste (ECDH + HKDF + AES-GCM), puis le tout est signé.
+function parseRequest(text) {
+  const clean = text.replace(/\s+/g, "");
+  const start = clean.indexOf(REQUEST_PREFIX);
+  if (start < 0) throw new Error("Ce texte n'est pas une demande d'activation Article Finder.");
+  let request;
+  try {
+    request = JSON.parse(decoder.decode(fromB64u(clean.slice(start + REQUEST_PREFIX.length))));
+  } catch (e) {
+    throw new Error("Demande incomplète : vérifiez qu'elle a été copiée en entier.");
+  }
+  if (!request.cle || !request.empreinte) throw new Error("Demande incomplète.");
+  return request;
+}
+async function makeLicense(secrets, requestText, client) {
+  const request = parseRequest(requestText);
+  const machineBytes = fromB64u(request.cle);
+  if (await fingerprint(machineBytes) !== request.empreinte) throw new Error("Demande altérée : l'empreinte ne correspond pas à la clé du poste.");
+  const machineKey = await subtle.importKey("raw", machineBytes, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const ephemeral = await subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const shared = await subtle.deriveBits({ name: "ECDH", public: machineKey }, ephemeral.privateKey, 256);
+  const hkdf = await subtle.importKey("raw", shared, "HKDF", false, ["deriveKey"]);
+  const wrapping = await subtle.deriveKey(
+    { name: "HKDF", hash: "SHA-256", salt: encoder.encode(HKDF_SALT), info: encoder.encode(HKDF_INFO) },
+    hkdf, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const wrapped = await subtle.encrypt({ name: "AES-GCM", iv, additionalData: encoder.encode(HKDF_INFO) },
+                                      wrapping, fromB64u(secrets.donnees));
+  const payload = encoder.encode(JSON.stringify({
+    v: 1, poste: request.poste, empreinte: request.empreinte, cle_poste: request.cle,
+    client: client || "", emise: new Date().toISOString().slice(0, 10),
+    ephemere: b64u(await subtle.exportKey("raw", ephemeral.publicKey)), iv: b64u(iv), cle_donnees: b64u(wrapped),
+  }));
+  const signingKey = await subtle.importKey("pkcs8", fromB64u(secrets.signature),
+                                            { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const signature = await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signingKey, payload);
+  return { request, license: LICENSE_PREFIX + b64u(payload) + "." + b64u(signature) };
+}
+window.ArticlesFinderActivation = { createKeys, sealBackup, openBackup, makeLicense, fingerprint };
+
+// --- Interface
+const $ = id => document.getElementById(id);
+let unlocked = null;
+let currentLicense = null;
+let pendingFromLink = false;
+
+// QR code du poste : l'adresse se termine par #AFDEMANDE1... (le navigateur n'envoie jamais cette partie au serveur).
+function requestFromLink() {
+  let text = "";
+  try { text = decodeURIComponent(location.hash.slice(1)); } catch (e) { return null; }
+  if (!text.startsWith(REQUEST_PREFIX)) return null;
+  history.replaceState(null, "", location.pathname + location.search);  // la demande ne reste pas dans l'historique
+  return text;
+}
+function createPendingLicense() {
+  if (!pendingFromLink || !unlocked) return;
+  pendingFromLink = false;
+  $("licenseBtn").click();
+}
+
+function message(id, text, ok) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = "msg " + (ok ? "ok" : "error");
+}
+function storedBackup() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return null; }
+}
+function rememberBackup(backup) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(backup)); } catch (e) { /* le fichier de sauvegarde reste la référence */ }
+}
+function show() {
+  const hasBackup = !!storedBackup();
+  $("setup").hidden = !!unlocked || hasBackup;
+  $("locked").hidden = !!unlocked || !hasBackup;
+  $("keys").hidden = !unlocked;
+  $("activate").hidden = !unlocked;
+  if (unlocked) $("publicKey").textContent = unlocked.publique;
+}
+function fileFromText(name, text) {
+  return new File([text], name, { type: "text/plain" });
+}
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url; link.download = name;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function busy(button, task) {
+  button.disabled = true;
+  try { await task(); } finally { button.disabled = false; }
+}
+
+$("createBtn").onclick = () => busy($("createBtn"), async () => {
+  const password = $("newPass").value;
+  if (password.length < 12) return message("setupMsg", "Le mot de passe doit faire au moins 12 caractères.");
+  if (password !== $("newPass2").value) return message("setupMsg", "Les deux mots de passe sont différents.");
+  const { secrets, backup } = await createKeys(password);
+  rememberBackup(backup);
+  unlocked = secrets;
+  download("cles-articles-finder.json", JSON.stringify(backup, null, 2), "application/json");
+  show();
+  message("keysMsg", "Clés créées. La sauvegarde a été téléchargée : rangez-la en lieu sûr avec le mot de passe.", true);
+  createPendingLicense();
+});
+
+$("backupFile").onchange = async () => {
+  const file = $("backupFile").files[0];
+  if (!file) return;
+  try {
+    const backup = JSON.parse(await file.text());
+    if (backup.format !== BACKUP_FORMAT) throw new Error("Ce fichier n'est pas une sauvegarde de clés Article Finder.");
+    rememberBackup(backup);
+    show();
+    message("lockedMsg", "Sauvegarde reprise : entrez son mot de passe.", true);
+  } catch (e) {
+    message("setupMsg", e.message);
+  }
+};
+
+$("unlockBtn").onclick = () => busy($("unlockBtn"), async () => {
+  try {
+    unlocked = await openBackup(storedBackup(), $("pass").value);
+    $("pass").value = "";
+    show();
+    createPendingLicense();
+  } catch (e) {
+    message("lockedMsg", e.message);
+  }
+});
+$("pass").addEventListener("keydown", e => { if (e.key === "Enter") $("unlockBtn").click(); });
+
+$("forgetBtn").onclick = () => {
+  if (!confirm("Retirer les clés de cet appareil ? Il faudra reprendre la sauvegarde pour activer des postes.")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  show();
+};
+
+$("copyPublicBtn").onclick = async () => {
+  await navigator.clipboard.writeText(unlocked.publique);
+  message("keysMsg", "Clé publique copiée.", true);
+};
+$("backupBtn").onclick = () => download("cles-articles-finder.json", JSON.stringify(storedBackup(), null, 2), "application/json");
+
+$("requestFile").onchange = async () => {
+  const file = $("requestFile").files[0];
+  if (file) $("request").value = (await file.text()).trim();
+};
+
+$("licenseBtn").onclick = () => busy($("licenseBtn"), async () => {
+  $("result").hidden = true;
+  try {
+    const { request, license } = await makeLicense(unlocked, $("request").value, $("client").value.trim());
+    currentLicense = { name: `licence_${(request.poste || "poste").replace(/[^\w-]+/g, "_")}.txt`, text: license };
+    $("resPoste").textContent = request.poste || "?";
+    $("resEmpreinte").textContent = request.empreinte;
+    $("license").value = license;
+    $("shareBtn").hidden = !(navigator.canShare && navigator.canShare({ files: [fileFromText(currentLicense.name, license)] }));
+    $("result").hidden = false;
+    message("activateMsg", "Licence créée.", true);
+    $("result").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    message("activateMsg", e.message);
+  }
+});
+
+$("shareBtn").onclick = async () => {
+  try {
+    await navigator.share({ files: [fileFromText(currentLicense.name, currentLicense.text)], title: "Licence Article Finder" });
+  } catch (e) {
+    if (e.name !== "AbortError") message("resultMsg", "Partage impossible : utilisez Télécharger ou Copier.");
+  }
+};
+$("downloadBtn").onclick = () => download(currentLicense.name, currentLicense.text, "text/plain");
+$("copyLicenseBtn").onclick = async () => {
+  await navigator.clipboard.writeText(currentLicense.text);
+  message("resultMsg", "Licence copiée.", true);
+};
+
+function acceptLinkedRequest() {
+  const linkedRequest = requestFromLink();
+  if (!linkedRequest) return;
+  $("request").value = linkedRequest;
+  $("result").hidden = true;
+  let poste = "";
+  try { poste = parseRequest(linkedRequest).poste || ""; } catch (e) { /* message d'erreur à la création */ }
+  const text = `Demande reçue par QR code${poste ? " du poste " + poste : ""}`;
+  if (unlocked) {
+    $("licenseBtn").click();       // clés déjà déverrouillées : la licence est créée tout de suite
+    return;
+  }
+  pendingFromLink = true;
+  message(storedBackup() ? "lockedMsg" : "setupMsg", text + " : déverrouillez vos clés, la licence sera créée aussitôt.", true);
+}
+
+if (!subtle) {
+  $("unsupported").hidden = false;
+} else {
+  show();
+  acceptLinkedRequest();
+  // Page déjà ouverte et nouveau QR scanné : seul le # change, la page n'est pas rechargée.
+  window.addEventListener("hashchange", acceptLinkedRequest);
+}
+</script>
+</body>
+</html>
